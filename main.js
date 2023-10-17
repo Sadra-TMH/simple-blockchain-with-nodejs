@@ -1,40 +1,92 @@
 const SHA256 = require("crypto-js/sha256");
 
+class Transaction {
+  constructor(fromAddress, toAddress, amount) {
+    this.fromAddress = fromAddress;
+    this.toAddress = toAddress;
+    this.amount = amount;
+  }
+}
+
 class Block {
-  constructor(index, timestamp, data, previousHash) {
-    this.index = index;
+  constructor(timestamp, transactions, previousHash) {
     this.timestamp = timestamp;
-    this.data = data;
+    this.transactions = transactions;
     this.previousHash = previousHash;
     this.hash = this.calculateHash();
+    this.nonce = 0;
   }
 
   calculateHash() {
     return SHA256(
-      this.index +
-        this.previousHash +
+      this.previousHash +
         this.timestamp +
-        JSON.stringify(this.data)
+        JSON.stringify(this.transactions) +
+        this.nonce
     ).toString();
+  }
+
+  mineBlock(difficulty) {
+    while (
+      this.hash.substring(0, difficulty) !== Array(difficulty + 1).join("0")
+    ) {
+      this.nonce++;
+      this.hash = this.calculateHash();
+    }
+
+    console.log("New Block Mined: ", this.hash);
   }
 }
 
 class BlockChain {
   constructor() {
     this.chain = [this.createGenesisBlock()];
+    this.difficulty = 3;
+    this.pendingTransactions = [];
+    this.miningReward = 100;
   }
 
   createGenesisBlock() {
-    return new Block(0, "01/01/2017", "GenesisBlock", "0");
+    return new Block("01/01/2017", "GenesisBlock", "0");
   }
 
   getLatestBlock() {
     return this.chain[this.chain.length - 1];
   }
 
+  minePendingTransactions(miningRewardAddress) {
+    let block = new Block(Date.now(), this.pendingTransactions);
+    block.mineBlock(this.difficulty);
+
+    this.chain.push(block);
+    this.pendingTransactions = [
+      new Transaction(null, miningRewardAddress, this.miningReward),
+    ];
+  }
+
+  createTranasction(transaction) {
+    this.pendingTransactions.push(transaction);
+  }
+
+  getBalanceOfAddress(address) {
+    let balance = 0;
+
+    for (const block of this.chain) {
+      for (const transaction of block.transactions) {
+        if (address === transaction.toAddress) {
+          balance += transaction.amount;
+        }
+        if (address === transaction.fromAddress) {
+          balance -= transaction.amount;
+        }
+      }
+    }
+    return balance;
+  }
+
   addBlock(newBlock) {
     newBlock.previousHash = this.getLatestBlock().hash;
-    newBlock.hash = newBlock.calculateHash();
+    newBlock.mineBlock(this.difficulty);
     this.chain.push(newBlock);
   }
   isChainValid() {
@@ -54,11 +106,15 @@ class BlockChain {
   }
 }
 
-let sadra = new BlockChain();
-sadra.addBlock(new Block(1, "01/01/2017", { amount: 4 }));
-sadra.addBlock(new Block(2, "02/01/2017", { amount: 9 }));
+let sadraCoin = new BlockChain();
 
-console.log("Is Valid?", sadra.isChainValid());
+sadraCoin.createTranasction(new Transaction("address1", "address2", 100));
+sadraCoin.createTranasction(new Transaction("address2", "address1", 50));
 
-sadra.chain[2].data = {amount : 100}
-console.log("Is Valid?", sadra.isChainValid());
+console.log("starting the miner");
+
+sadraCoin.minePendingTransactions("address3");
+
+console.log("address3", sadraCoin.getBalanceOfAddress("address3"));
+sadraCoin.minePendingTransactions("address3");
+console.log("address3", sadraCoin.getBalanceOfAddress("address3"));
