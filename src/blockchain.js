@@ -1,10 +1,33 @@
 const SHA256 = require("crypto-js/sha256");
+const EC = require("elliptic").ec;
+const ec = new EC("secp256k1");
 
 class Transaction {
   constructor(fromAddress, toAddress, amount) {
     this.fromAddress = fromAddress;
     this.toAddress = toAddress;
     this.amount = amount;
+  }
+  calculateHash(fromAddress, toAddress, amount) {
+    return SHA256(this.fromAddress + this.toAddress + this.amount).toString();
+  }
+
+  signTransaction(signingKey) {
+    if (signingKey.getPublic("hex") !== this.fromAddress) {
+      throw new Error("You can not sign a transaction for other wallets!");
+    }
+    const hash = this.calculateHash();
+    const sign = signingKey.sign(hash, "base64");
+    this.signature = sign.toDER("hex");
+  }
+  isValid() {
+    if (this.fromAddress === null) return true;
+    if (!this.signature || this.signature.length === 0) {
+      throw new Error("No signature in this transaction!");
+    }
+
+    const publicKey = ec.keyFromPublic(this.fromAddress, "hex");
+    return publicKey.verify(this.calculateHash(), this.signature);
   }
 }
 
@@ -36,6 +59,15 @@ class Block {
 
     console.log("New Block Mined: ", this.hash);
   }
+
+  hasValidTransactions() {
+    for (const tx of this.transactions) {
+      if (!tx.isValid()) {
+        return false;
+      }
+    }
+    return true;
+  }
 }
 
 class BlockChain {
@@ -64,7 +96,14 @@ class BlockChain {
     ];
   }
 
-  createTranasction(transaction) {
+  addTranasction(transaction) {
+    if (!transaction.fromAddress || !transaction.toAddress) {
+      throw new Error("Transaction must include from and to address");
+    }
+    if (!transaction.isValid()) {
+      throw new Error("Can not add invalid transactions to the chain.");
+    }
+
     this.pendingTransactions.push(transaction);
   }
 
@@ -94,6 +133,10 @@ class BlockChain {
       const currentBlock = this.chain[i];
       const previousBlock = this.chain[i - 1];
 
+      if (!currentBlock.hasValidTransactions()) {
+        return false;
+      }
+
       if (currentBlock.hash !== currentBlock.calculateHash()) {
         return false;
       }
@@ -106,15 +149,5 @@ class BlockChain {
   }
 }
 
-let sadraCoin = new BlockChain();
-
-sadraCoin.createTranasction(new Transaction("address1", "address2", 100));
-sadraCoin.createTranasction(new Transaction("address2", "address1", 50));
-
-console.log("starting the miner");
-
-sadraCoin.minePendingTransactions("address3");
-
-console.log("address3", sadraCoin.getBalanceOfAddress("address3"));
-sadraCoin.minePendingTransactions("address3");
-console.log("address3", sadraCoin.getBalanceOfAddress("address3"));
+module.exports.BlockChain = BlockChain;
+module.exports.Transaction = Transaction;
